@@ -1,6 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
-import pandas as st_pandas
+import pandas as pd
 
 # Configuração inicial da página
 st.set_page_config(page_title="Vexys Capital - Simulador", layout="wide")
@@ -20,7 +20,7 @@ def init_connection():
 supabase: Client = init_connection()
 
 # Busca dos dados no banco
-@st.cache_data(ttl=3600) # Atualiza o cache a cada 1 hora
+@st.cache_data(ttl=3600)
 def fetch_data():
     resposta = supabase.table("vexys_indicadores_moedas").select("*").execute()
     return resposta.data
@@ -33,8 +33,9 @@ try:
         st.success("Conexão com o banco de dados estabelecida com sucesso!")
         st.subheader("Indicadores Macroeconômicos Globais (Ao Vivo)")
         
-        # Transforma os dados em uma tabela visual (DataFrame)
-        st.dataframe(dados_moedas, use_container_width=True)
+        # Transforma os dados em uma tabela visual limpa
+        df = pd.DataFrame(dados_moedas)
+        st.dataframe(df, use_container_width=True)
     else:
         st.warning("O banco de dados está conectado, mas a tabela está vazia.")
 
