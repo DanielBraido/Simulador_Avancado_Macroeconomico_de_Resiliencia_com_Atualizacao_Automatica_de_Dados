@@ -1,5 +1,6 @@
-streamlit
-pandas
+streamlit==1.37.0
+supabase==2.7.4
+pandas==2.2.2
 numpy
 matplotlib
 pillow
