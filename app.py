@@ -25,14 +25,11 @@ def fetch_data():
 dados_brutos = fetch_data()
 df_dados = pd.DataFrame(dados_brutos) if dados_brutos else pd.DataFrame()
 
-# Tratamento para garantir que pegamos apenas o registro mais recente/válido por país
+# Tratamento para garantir dados únicos e válidos
 if not df_dados.empty:
-    # Ordena pelo ID ou data de forma decrescente e remove duplicadas mantendo a última atualização real
     if 'id' in df_dados.columns:
         df_dados = df_dados.sort_values(by='id', ascending=False)
     df_dados = df_dados.drop_duplicates(subset=['nome_moeda'], keep='first')
-    
-    # Filtra apenas linhas onde a inflação é maior que zero (evita dados vazios)
     df_dados = df_dados[df_dados['inflacao_base'] > 0]
 
 # Cabeçalho Principal
@@ -54,7 +51,7 @@ else:
     moedas_selecionadas = []
     st.sidebar.warning("Carregando moedas do banco...")
 
-# Corpo Principal: Gráfico e Pódio Corrigidos
+# Corpo Principal: Gráfico e Pódio Aprimorado
 if moedas_selecionadas and not df_dados.empty:
     st.subheader("Evolução do Poder de Compra Corroído pela Inflação")
     
@@ -69,7 +66,7 @@ if moedas_selecionadas and not df_dados.empty:
         else:
             taxa_inflacao = 0.05
             
-        # Fórmula correta de desvalorização do poder de compra
+        # Fórmula de desvalorização do poder de compra
         poder_compra = patrimonio_inicial * (1 / (1 + taxa_inflacao) ** anos)
         
         for ano, valor in zip(anos, poder_compra):
@@ -80,9 +77,16 @@ if moedas_selecionadas and not df_dados.empty:
             })
             
         patrimonio_final = poder_compra[-1]
+        
+        # Cálculo das porcentagens de restante e perda
+        pct_restante = (patrimonio_final / patrimonio_inicial) * 100
+        pct_perda = 100 - pct_restante
+        
         resumo_final.append({
             "Moeda / País": moeda, 
             "Patrimônio Final Restante (R$)": patrimonio_final,
+            "% Restante": pct_restante,
+            "% de Perda (Corrosão)": pct_perda,
             "Inflação Base (%)": taxa_inflacao * 100
         })
 
@@ -106,11 +110,10 @@ if moedas_selecionadas and not df_dados.empty:
     
     st.divider()
 
-    # Seção do Ranking com Medalhas
+    # Seção do Ranking com Medalhas e Porcentagens
     st.subheader("🏆 Pódio de Resiliência Monetária (Menor Corrosão)")
     
     df_ranking = pd.DataFrame(resumo_final)
-    # Ordena do maior patrimônio restante (menor inflação) para o menor
     df_ranking = df_ranking.sort_values(by="Patrimônio Final Restante (R$)", ascending=False).reset_index(drop=True)
     
     def atribuir_medalha(posicao):
@@ -124,10 +127,21 @@ if moedas_selecionadas and not df_dados.empty:
             return f"🛡️ {posicao + 1}º Lugar"
 
     df_ranking["Classificação"] = [atribuir_medalha(i) for i in range(len(df_ranking))]
-    df_ranking_exibicao = df_ranking[["Classificação", "Moeda / País", "Patrimônio Final Restante (R$)", "Inflação Base (%)"]]
+    
+    # Organização das colunas na tabela final
+    df_ranking_exibicao = df_ranking[[
+        "Classificação", 
+        "Moeda / País", 
+        "Patrimônio Final Restante (R$)", 
+        "% Restante", 
+        "% de Perda (Corrosão)", 
+        "Inflação Base (%)"
+    ]]
     
     st.dataframe(df_ranking_exibicao.style.format({
         "Patrimônio Final Restante (R$)": "R$ {:,.2f}",
+        "% Restante": "{:.2f}%",
+        "% de Perda (Corrosão)": "{:.2f}%",
         "Inflação Base (%)": "{:.2f}%"
     }), use_container_width=True)
 
