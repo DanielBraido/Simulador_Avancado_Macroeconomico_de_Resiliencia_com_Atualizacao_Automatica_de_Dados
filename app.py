@@ -2,6 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 import numpy as np
+import plotly.express as px
 
 # Configuração da página
 st.set_page_config(page_title="Vexys Capital — Simulador de Resiliência Monetária", layout="wide")
@@ -43,12 +44,12 @@ else:
     moedas_selecionadas = []
     st.sidebar.warning("Carregando moedas do banco...")
 
-# Corpo Principal: Lógica de Projeção, Gráfico e Ranking
+# Corpo Principal: Lógica de Projeção, Gráfico Profissional e Ranking
 if moedas_selecionadas and not df_dados.empty:
     st.subheader("Evolução do Poder de Compra Corroído pela Inflação")
     
     anos = np.arange(0, anos_simulacao + 1)
-    tabela_projetilh = pd.DataFrame({"Ano": anos})
+    dados_grafico = []
     resumo_final = []
     
     for moeda in moedas_selecionadas:
@@ -58,10 +59,16 @@ if moedas_selecionadas and not df_dados.empty:
         else:
             taxa_inflacao = 0.05
             
-        # Fórmula de desvalorização do poder de compra
+        # Fórmula rigorosa de desvalorização do poder de compra
         poder_compra = patrimonio_inicial * (1 / (1 + taxa_inflacao) ** anos)
-        tabela_projetilh[moeda] = poder_compra
         
+        for ano, valor in zip(anos, poder_compra):
+            dados_grafico.append({
+                "Ano": ano,
+                "Poder de Compra (R$)": valor,
+                "Moeda / País": moeda
+            })
+            
         # Guarda o valor final no último ano para o ranking
         patrimonio_final = poder_compra[-1]
         resumo_final.append({
@@ -70,9 +77,25 @@ if moedas_selecionadas and not df_dados.empty:
             "Inflação Base (%)": taxa_inflacao * 100
         })
 
-    # Gráfico de Linhas Coloridas
-    tabela_grafico = tabela_projetilh.set_index("Ano")
-    st.line_chart(tabela_grafico, use_container_width=True)
+    # Criação do DataFrame para o Plotly
+    df_plot = pd.DataFrame(dados_grafico)
+    
+    # Gráfico de Linhas Coloridas Profissional (Plotly)
+    fig = px.line(
+        df_plot, 
+        x="Ano", 
+        y="Poder de Compra (R$)", 
+        color="Moeda / País",
+        markers=False,
+        height=500
+    )
+    fig.update_layout(
+        xaxis_title="Anos de Simulação",
+        yaxis_title="Poder de Compra Restante (R$)",
+        legend_title="Países",
+        template="plotly_dark"
+    )
+    st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
 
@@ -80,10 +103,8 @@ if moedas_selecionadas and not df_dados.empty:
     st.subheader("🏆 Pódio de Resiliência Monetária (Menor Corrosão)")
     
     df_ranking = pd.DataFrame(resumo_final)
-    # Ordena do maior patrimônio restante (vencedor com menor inflação) para o menor
     df_ranking = df_ranking.sort_values(by="Patrimônio Final Restante (R$)", ascending=False).reset_index(drop=True)
     
-    # Atribui as medalhas de forma divertida
     def atribuir_medalha(posicao):
         if posicao == 0:
             return "🥇 Ouro (Campeã da Resiliência)"
@@ -95,8 +116,6 @@ if moedas_selecionadas and not df_dados.empty:
             return f"🛡️ {posicao + 1}º Lugar"
 
     df_ranking["Classificação"] = [atribuir_medalha(i) for i in range(len(df_ranking))]
-    
-    # Reorganiza as colunas para exibição
     df_ranking_exibicao = df_ranking[["Classificação", "Moeda / País", "Patrimônio Final Restante (R$)", "Inflação Base (%)"]]
     
     st.dataframe(df_ranking_exibicao.style.format({
