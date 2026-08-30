@@ -1,16 +1,12 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
+import numpy as np
 
-# Configuração inicial da página
-st.set_page_config(page_title="Vexys Capital - Simulador", layout="wide")
+# Configuração da página
+st.set_page_config(page_title="Vexys Capital — Simulador de Resiliência Monetária", layout="wide")
 
-# Títulos
-st.title("Vexys Capital — Simulador de Resiliência Monetária (30 Anos)")
-st.markdown("Avalie o impacto estrutural da inflação e da dominância fiscal sobre o seu patrimônio.")
-st.divider()
-
-# Conexão com o Supabase usando os Secrets do Streamlit
+# Conexão com o Supabase usando os Secrets
 @st.cache_resource
 def init_connection():
     url = st.secrets["SUPABASE_URL"]
@@ -19,25 +15,98 @@ def init_connection():
 
 supabase: Client = init_connection()
 
-# Busca dos dados no banco
+# Busca dos dados de inflação atualizados pelo n8n
 @st.cache_data(ttl=3600)
 def fetch_data():
     resposta = supabase.table("vexys_indicadores_moedas").select("*").execute()
     return resposta.data
 
-# Executa a busca e exibe na tela
-try:
-    dados_moedas = fetch_data()
-    
-    if dados_moedas:
-        st.success("Conexão com o banco de dados estabelecida com sucesso!")
-        st.subheader("Indicadores Macroeconômicos Globais (Ao Vivo)")
-        
-        # Transforma os dados em uma tabela visual limpa
-        df = pd.DataFrame(dados_moedas)
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.warning("O banco de dados está conectado, mas a tabela está vazia.")
+dados_brutos = fetch_data()
+df_dados = pd.DataFrame(dados_brutos) if dados_brutos else pd.DataFrame()
 
-except Exception as e:
-    st.error(f"Erro ao conectar com o banco de dados: {e}")
+# Cabeçalho Principal
+st.title("Vexys Capital — Simulador de Resiliência Monetária (30 Anos)")
+st.markdown("Avalie o impacto estrutural da inflação e da dominância fiscal sobre o seu patrimônio.")
+st.divider()
+
+# Barra lateral para os controles do usuário
+st.sidebar.header("Parâmetros da Simulação")
+
+anos_simulacao = st.sidebar.slider("Horizonte de Tempo (Anos)", min_value=1, max_value=50, value=30)
+patrimonio_inicial = st.sidebar.number_input("Patrimônio Inicial (R$)", value=100000.0, step=10000.0)
+
+st.sidebar.subheader("Seleção de Moedas / Países")
+if not df_dados.empty and 'nome_moeda' in df_dados.columns:
+    opcoes_moedas = df_dados['nome_moeda'].unique().tolist()
+    moedas_selecionadas = st.sidebar.multiselect("Escolha para comparar:", options=opcoes_moedas, default=opcoes_moedas[:5] if len(opcoes_moedas) >= 5 else opcoes_moedas)
+else:
+    moedas_selecionadas = []
+    st.sidebar.warning("Carregando moedas do banco...")
+
+# Corpo Principal: Lógica de Projeção, Gráfico e Ranking
+if moedas_selecionadas and not df_dados.empty:
+    st.subheader("Evolução do Poder de Compra Corroído pela Inflação")
+    
+    anos = np.arange(0, anos_simulacao + 1)
+    tabela_projetilh = pd.DataFrame({"Ano": anos})
+    resumo_final = []
+    
+    for moeda in moedas_selecionadas:
+        inflacao_row = df_dados[df_dados['nome_moeda'] == moeda]
+        if not inflacao_row.empty:
+            taxa_inflacao = float(inflacao_row['inflacao_base'].values[0]) / 100.0
+        else:
+            taxa_inflacao = 0.05
+            
+        # Fórmula de desvalorização do poder de compra
+        poder_compra = patrimonio_inicial * (1 / (1 + taxa_inflacao) ** anos)
+        tabela_projetilh[moeda] = poder_compra
+        
+        # Guarda o valor final no último ano para o ranking
+        patrimonio_final = poder_compra[-1]
+        resumo_final.append({
+            "Moeda / País": moeda, 
+            "Patrimônio Final Restante (R$)": patrimonio_final,
+            "Inflação Base (%)": taxa_inflacao * 100
+        })
+
+    # Gráfico de Linhas Coloridas
+    tabela_grafico = tabela_projetilh.set_index("Ano")
+    st.line_chart(tabela_grafico, use_container_width=True)
+    
+    st.divider()
+
+    # Seção do Ranking com Medalhas Divertidas
+    st.subheader("🏆 Pódio de Resiliência Monetária (Menor Corrosão)")
+    
+    df_ranking = pd.DataFrame(resumo_final)
+    # Ordena do maior patrimônio restante (vencedor com menor inflação) para o menor
+    df_ranking = df_ranking.sort_values(by="Patrimônio Final Restante (R$)", ascending=False).reset_index(drop=True)
+    
+    # Atribui as medalhas de forma divertida
+    def atribuir_medalha(posicao):
+        if posicao == 0:
+            return "🥇 Ouro (Campeã da Resiliência)"
+        elif posicao == 1:
+            return "🥈 Prata (Vice-campeã)"
+        elif posicao == 2:
+            return "🥉 Bronze (No Pódio)"
+        else:
+            return f"🛡️ {posicao + 1}º Lugar"
+
+    df_ranking["Classificação"] = [atribuir_medalha(i) for i in range(len(df_ranking))]
+    
+    # Reorganiza as colunas para exibição
+    df_ranking_exibicao = df_ranking[["Classificação", "Moeda / País", "Patrimônio Final Restante (R$)", "Inflação Base (%)"]]
+    
+    st.dataframe(df_ranking_exibicao.style.format({
+        "Patrimônio Final Restante (R$)": "R$ {:,.2f}",
+        "Inflação Base (%)": "{:.2f}%"
+    }), use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Dados Atuais Utilizados na Base")
+    st.dataframe(df_dados[['ticker', 'nome_moeda', 'inflacao_base', 'atualizado_em']], use_container_width=True)
+
+else:
+    st.info("Selecione ao menos uma moeda na barra lateral para gerar o gráfico e o ranking.")
