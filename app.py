@@ -25,12 +25,22 @@ def fetch_data():
 dados_brutos = fetch_data()
 df_dados = pd.DataFrame(dados_brutos) if dados_brutos else pd.DataFrame()
 
+# Tratamento para garantir que pegamos apenas o registro mais recente/válido por país
+if not df_dados.empty:
+    # Ordena pelo ID ou data de forma decrescente e remove duplicadas mantendo a última atualização real
+    if 'id' in df_dados.columns:
+        df_dados = df_dados.sort_values(by='id', ascending=False)
+    df_dados = df_dados.drop_duplicates(subset=['nome_moeda'], keep='first')
+    
+    # Filtra apenas linhas onde a inflação é maior que zero (evita dados vazios)
+    df_dados = df_dados[df_dados['inflacao_base'] > 0]
+
 # Cabeçalho Principal
 st.title("Vexys Capital — Simulador de Resiliência Monetária (30 Anos)")
 st.markdown("Avalie o impacto estrutural da inflação e da dominância fiscal sobre o seu patrimônio.")
 st.divider()
 
-# Barra lateral para os controles do usuário
+# Barra lateral para os parâmetros
 st.sidebar.header("Parâmetros da Simulação")
 
 anos_simulacao = st.sidebar.slider("Horizonte de Tempo (Anos)", min_value=1, max_value=50, value=30)
@@ -44,7 +54,7 @@ else:
     moedas_selecionadas = []
     st.sidebar.warning("Carregando moedas do banco...")
 
-# Corpo Principal: Lógica de Projeção, Gráfico Profissional e Ranking
+# Corpo Principal: Gráfico e Pódio Corrigidos
 if moedas_selecionadas and not df_dados.empty:
     st.subheader("Evolução do Poder de Compra Corroído pela Inflação")
     
@@ -59,7 +69,7 @@ if moedas_selecionadas and not df_dados.empty:
         else:
             taxa_inflacao = 0.05
             
-        # Fórmula rigorosa de desvalorização do poder de compra
+        # Fórmula correta de desvalorização do poder de compra
         poder_compra = patrimonio_inicial * (1 / (1 + taxa_inflacao) ** anos)
         
         for ano, valor in zip(anos, poder_compra):
@@ -69,7 +79,6 @@ if moedas_selecionadas and not df_dados.empty:
                 "Moeda / País": moeda
             })
             
-        # Guarda o valor final no último ano para o ranking
         patrimonio_final = poder_compra[-1]
         resumo_final.append({
             "Moeda / País": moeda, 
@@ -77,10 +86,8 @@ if moedas_selecionadas and not df_dados.empty:
             "Inflação Base (%)": taxa_inflacao * 100
         })
 
-    # Criação do DataFrame para o Plotly
+    # Gráfico Plotly
     df_plot = pd.DataFrame(dados_grafico)
-    
-    # Gráfico de Linhas Coloridas Profissional (Plotly)
     fig = px.line(
         df_plot, 
         x="Ano", 
@@ -99,10 +106,11 @@ if moedas_selecionadas and not df_dados.empty:
     
     st.divider()
 
-    # Seção do Ranking com Medalhas Divertidas
+    # Seção do Ranking com Medalhas
     st.subheader("🏆 Pódio de Resiliência Monetária (Menor Corrosão)")
     
     df_ranking = pd.DataFrame(resumo_final)
+    # Ordena do maior patrimônio restante (menor inflação) para o menor
     df_ranking = df_ranking.sort_values(by="Patrimônio Final Restante (R$)", ascending=False).reset_index(drop=True)
     
     def atribuir_medalha(posicao):
@@ -124,7 +132,7 @@ if moedas_selecionadas and not df_dados.empty:
     }), use_container_width=True)
 
     st.markdown("---")
-    st.subheader("Dados Atuais Utilizados na Base")
+    st.subheader("Dados Únicos Utilizados na Base")
     st.dataframe(df_dados[['ticker', 'nome_moeda', 'inflacao_base', 'atualizado_em']], use_container_width=True)
 
 else:
